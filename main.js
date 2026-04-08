@@ -1,6 +1,7 @@
 const gridContainer = document.getElementById('grid-container');
 const startBtn = document.getElementById('start-btn');
 const pauseBtn = document.getElementById('pause-btn');
+const nextBtn = document.getElementById('next-btn');
 const restartBtn = document.getElementById('restart-btn');
 
 // Settings for the grid
@@ -51,7 +52,6 @@ function createGrid() {
             cell.dataset.col = c;
             
             cell.addEventListener('mousedown', (e) => {
-                if (isRunning) return;
                 e.preventDefault();
                 isMouseDown = true;
                 currentMode = grid[r][c] === 0;
@@ -59,7 +59,7 @@ function createGrid() {
             });
 
             cell.addEventListener('mouseover', () => {
-                if (isMouseDown && !isRunning) {
+                if (isMouseDown) {
                     setCellState(r, c, currentMode, cell);
                 }
             });
@@ -149,6 +149,7 @@ function startSimulation() {
     isRunning = true;
     startBtn.disabled = true;
     pauseBtn.disabled = false;
+    nextBtn.disabled = true;
     simulationInterval = setInterval(updateStep, 1000);
 }
 
@@ -156,6 +157,7 @@ function pauseSimulation() {
     isRunning = false;
     startBtn.disabled = false;
     pauseBtn.disabled = true;
+    nextBtn.disabled = false;
     if (simulationInterval) {
         clearInterval(simulationInterval);
         simulationInterval = null;
@@ -188,4 +190,9 @@ window.addEventListener('resize', () => {
 // Button events
 startBtn.addEventListener('click', startSimulation);
 pauseBtn.addEventListener('click', pauseSimulation);
+nextBtn.addEventListener('click', () => {
+    if (!isRunning) {
+        updateStep();
+    }
+});
 restartBtn.addEventListener('click', clearGrid);

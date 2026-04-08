@@ -82,6 +82,14 @@ button:disabled {
     border-color: var(--cell-alive-1);
 }
 
+#next-btn {
+    border-color: rgba(88, 166, 255, 0.4);
+}
+
+#next-btn:hover:not(:disabled) {
+    border-color: var(--link-color);
+}
+
 #restart-btn {
     border-color: rgba(248, 81, 73, 0.4);
 }
