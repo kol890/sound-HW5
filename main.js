@@ -69,7 +69,11 @@ function playNote(frequency, startTime, duration, noteCount = 1) {
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(frequency, startTime);
+
+    // Add slight variation for warmth (±0.5% jitter)
+    const jitteredFreq = frequency * (1 + (Math.random() - 0.5) * 0.01);
+    osc.frequency.setValueAtTime(jitteredFreq, startTime);
+
     const freqFactor = Math.pow(frequency / 440, 0.5); 
     const baseVolume = 0.2 * freqFactor;
     const scaledVolume = baseVolume / Math.max(1, Math.pow(noteCount, 0.5));
