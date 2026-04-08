@@ -16,14 +16,15 @@ let currentMode = true;
 let isRunning = false;
 let stepCount = 0;
 
-// Internal state
-let grid = [];
-let cellElements = [];
+// Internal state - Optimized to 1D Typed Arrays
+let grid = null;
+let nextGrid = null;
+let cellElements = []; // Flattened DOM Cache
 
 // --- TWO CLOCKS SCHEDULER ---
-let currentSpeed = 1000; // ms per step
-let nextStepTime = 0;    // When the next audio step should occur (in audioContext time)
-const LOOK_AHEAD = 0.1;  // How far to look ahead (seconds)
+let currentSpeed = 1000;
+let nextStepTime = 0;
+const LOOK_AHEAD = 0.1;
 let requestRef = null;
 
 // Audio Context & Routing
@@ -56,10 +57,8 @@ function initAudio() {
         compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
         compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
         compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
-
         masterGain = audioCtx.createGain();
         masterGain.gain.setValueAtTime(0.7, audioCtx.currentTime);
-
         compressor.connect(masterGain);
         masterGain.connect(audioCtx.destination);
     }
@@ -71,22 +70,18 @@ function playNote(frequency, startTime, duration, noteCount = 1) {
     const gainNode = audioCtx.createGain();
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(frequency, startTime);
-
     const freqFactor = Math.pow(frequency / 440, 0.5); 
     const baseVolume = 0.2 * freqFactor;
     const scaledVolume = baseVolume / Math.max(1, Math.pow(noteCount, 0.5));
-
     const attackTime = 0.03;
     const decayTime = 0.1;
     const sustainLevel = scaledVolume * 0.7;
     const releaseTime = 0.2;
-
     gainNode.gain.setValueAtTime(0, startTime);
     gainNode.gain.linearRampToValueAtTime(scaledVolume, startTime + attackTime);
     gainNode.gain.exponentialRampToValueAtTime(sustainLevel, startTime + attackTime + decayTime);
     gainNode.gain.setValueAtTime(sustainLevel, startTime + duration);
     gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + releaseTime);
-
     osc.connect(gainNode);
     gainNode.connect(compressor);
     osc.start(startTime);
@@ -101,12 +96,10 @@ function getFrequencyForRow(r) {
 
 function scheduler() {
     if (!isRunning) return;
-
     while (nextStepTime < audioCtx.currentTime + LOOK_AHEAD) {
         updateStep(nextStepTime);
         nextStepTime += currentSpeed / 1000;
     }
-    
     requestRef = requestAnimationFrame(scheduler);
 }
 
@@ -121,31 +114,30 @@ function createGrid() {
     gridContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     gridContainer.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
 
-    grid = Array(rows).fill().map(() => Array(cols).fill(0));
-    cellElements = Array(rows).fill().map(() => Array(cols).fill(null));
+    // Optimized Linear Arrays
+    grid = new Uint8Array(rows * cols);
+    nextGrid = new Uint8Array(rows * cols);
+    cellElements = new Array(rows * cols);
 
     const fragment = document.createDocumentFragment();
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
+            const idx = r * cols + c;
             const cell = document.createElement('div');
             cell.classList.add('cell');
-            cellElements[r][c] = cell;
+            cellElements[idx] = cell;
             cell.addEventListener('mousedown', (e) => {
                 e.preventDefault();
                 isMouseDown = true;
-                currentMode = grid[r][c] === 0;
+                currentMode = grid[idx] === 0;
                 setCellState(r, c, currentMode);
-                if (currentMode) {
-                    playNote(getFrequencyForRow(r), audioCtx?.currentTime || 0, 0.2, 1);
-                }
+                if (currentMode) playNote(getFrequencyForRow(r), audioCtx?.currentTime || 0, 0.2, 1);
             });
             cell.addEventListener('mouseover', () => {
                 if (isMouseDown) {
-                    const wasDead = grid[r][c] === 0;
+                    const wasDead = grid[idx] === 0;
                     setCellState(r, c, currentMode);
-                    if (wasDead && currentMode) {
-                        playNote(getFrequencyForRow(r), audioCtx?.currentTime || 0, 0.2, 1);
-                    }
+                    if (wasDead && currentMode) playNote(getFrequencyForRow(r), audioCtx?.currentTime || 0, 0.2, 1);
                 }
             });
             fragment.appendChild(cell);
@@ -155,8 +147,9 @@ function createGrid() {
 }
 
 function setCellState(r, c, alive) {
-    grid[r][c] = alive ? 1 : 0;
-    const cell = cellElements[r][c];
+    const idx = r * cols + c;
+    grid[idx] = alive ? 1 : 0;
+    const cell = cellElements[idx];
     if (!cell) return;
     if (alive) {
         if (!cell.classList.contains('alive')) {
@@ -172,81 +165,80 @@ function setCellState(r, c, alive) {
 function countNeighbors(r, c) {
     let count = 0;
     for (let i = -1; i <= 1; i++) {
+        const nr = (r + i + rows) % rows;
+        const rowOffset = nr * cols;
         for (let j = -1; j <= 1; j++) {
             if (i === 0 && j === 0) continue;
-            const row = (r + i + rows) % rows;
-            const col = (c + j + cols) % cols;
-            count += grid[row][col];
+            const nc = (c + j + cols) % cols;
+            count += grid[rowOffset + nc];
         }
     }
     return count;
 }
 
-/**
- * Computes next generation and schedules audio/visuals.
- */
 function updateStep(time) {
-    const nextGrid = grid.map(arr => [...arr]);
     let anyAlive = false;
     const activeRows = new Set();
+    const changes = []; // Only track what changed for the visual update
 
     for (let r = 0; r < rows; r++) {
+        const offset = r * cols;
         for (let c = 0; c < cols; c++) {
+            const idx = offset + c;
             const neighbors = countNeighbors(r, c);
-            const isAlive = grid[r][c] === 1;
+            const isAlive = grid[idx] === 1;
+            
+            let nextState = 0;
             if (isAlive) {
                 if (neighbors === 2 || neighbors === 3) {
-                    anyAlive = true;
-                    activeRows.add(r);
-                } else {
-                    nextGrid[r][c] = 0;
-                }
-            } else {
-                if (neighbors === 3) {
-                    nextGrid[r][c] = 1;
+                    nextState = 1;
                     anyAlive = true;
                     activeRows.add(r);
                 }
+            } else if (neighbors === 3) {
+                nextState = 1;
+                anyAlive = true;
+                activeRows.add(r);
+            }
+
+            nextGrid[idx] = nextState;
+            if (isAlive !== (nextState === 1)) {
+                changes.push(idx, nextState);
             }
         }
     }
 
-    // Schedule audio
-    const noteDuration = (currentSpeed / 1000) * 0.8;
-    activeRows.forEach(r => playNote(getFrequencyForRow(r), time, noteDuration, activeRows.size));
-
-    // Schedule visual update
-    const gridToRender = nextGrid.map(arr => [...arr]);
-    const currentStep = ++stepCount;
-    const delay = (time - audioCtx.currentTime) * 1000;
-    
-    setTimeout(() => {
-        requestAnimationFrame(() => {
-            renderGridState(gridToRender, currentStep);
-        });
-    }, Math.max(0, delay));
-
+    // Buffer Swap: grid becomes nextGrid without any cloning
+    const temp = grid;
     grid = nextGrid;
-    if (!anyAlive && isRunning) pauseSimulation();
-}
+    nextGrid = temp;
 
-/**
- * Updates DOM based on a captured grid state.
- */
-function renderGridState(state, count) {
-    stepCountDisplay.textContent = count;
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            const isAlive = state[r][c] === 1;
-            const cell = cellElements[r][c];
-            if (isAlive && !cell.classList.contains('alive')) {
-                cell.classList.add('alive');
-                cell.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-            } else if (!isAlive && cell.classList.contains('alive')) {
-                cell.classList.remove('alive');
-                cell.style.backgroundColor = '';
-            }
-        }
+    if (anyAlive || changes.length > 0) {
+        const noteDuration = (currentSpeed / 1000) * 0.8;
+        activeRows.forEach(r => playNote(getFrequencyForRow(r), time, noteDuration, activeRows.size));
+
+        const currentStep = ++stepCount;
+        const delay = (time - audioCtx.currentTime) * 1000;
+        
+        setTimeout(() => {
+            requestAnimationFrame(() => {
+                stepCountDisplay.textContent = currentStep;
+                for (let i = 0; i < changes.length; i += 2) {
+                    const idx = changes[i];
+                    const state = changes[i+1];
+                    const cell = cellElements[idx];
+                    if (state === 1) {
+                        cell.classList.add('alive');
+                        cell.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                    } else {
+                        cell.classList.remove('alive');
+                        cell.style.backgroundColor = '';
+                    }
+                }
+            });
+        }, Math.max(0, delay));
+    } else if (isRunning) {
+        pauseSimulation();
     }
 }
 
@@ -278,9 +270,13 @@ function pauseSimulation() {
 function clearGrid() {
     pauseSimulation();
     resetStepCount();
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            setCellState(r, c, false);
+    if (!grid) return;
+    for (let i = 0; i < grid.length; i++) {
+        if (grid[i] === 1) {
+            grid[i] = 0;
+            const cell = cellElements[i];
+            cell.classList.remove('alive');
+            cell.style.backgroundColor = '';
         }
     }
 }
@@ -306,7 +302,6 @@ nextBtn.addEventListener('click', () => {
     }
 });
 restartBtn.addEventListener('click', clearGrid);
-
 testSoundBtn.addEventListener('click', () => {
     initAudio();
     if (audioCtx.state === 'suspended') audioCtx.resume();
