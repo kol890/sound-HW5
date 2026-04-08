@@ -3,6 +3,9 @@ const startBtn = document.getElementById('start-btn');
 const pauseBtn = document.getElementById('pause-btn');
 const nextBtn = document.getElementById('next-btn');
 const restartBtn = document.getElementById('restart-btn');
+const speedSlider = document.getElementById('speed-slider');
+const speedValDisplay = document.getElementById('speed-val');
+const stepCountDisplay = document.getElementById('step-count');
 
 // Settings for the grid
 const CELL_SIZE = 16;
@@ -11,6 +14,8 @@ let isMouseDown = false;
 let currentMode = true; // true = painting alive, false = painting dead
 let isRunning = false;
 let simulationInterval = null;
+let currentSpeed = 1000;
+let stepCount = 0;
 
 // Internal state
 let grid = [];
@@ -28,6 +33,7 @@ const colors = [
  */
 function createGrid() {
     pauseSimulation();
+    resetStepCount();
     gridContainer.innerHTML = '';
 
     const width = gridContainer.clientWidth;
@@ -113,6 +119,7 @@ function countNeighbors(r, c) {
  */
 function updateStep() {
     const nextGrid = grid.map(arr => [...arr]);
+    let hasChanged = false;
 
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
@@ -120,28 +127,39 @@ function updateStep() {
             const isAlive = grid[r][c] === 1;
 
             if (isAlive) {
-                // Rules 1, 2, 3: Survival, Overpopulation, Isolation
                 if (neighbors < 2 || neighbors > 3) {
                     nextGrid[r][c] = 0;
+                    hasChanged = true;
                 }
             } else {
-                // Rule 4: Reproduction
                 if (neighbors === 3) {
                     nextGrid[r][c] = 1;
+                    hasChanged = true;
                 }
             }
         }
     }
 
-    // Update UI and state
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            if (grid[r][c] !== nextGrid[r][c]) {
-                setCellState(r, c, nextGrid[r][c] === 1);
+    if (hasChanged) {
+        stepCount++;
+        stepCountDisplay.textContent = stepCount;
+        
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (grid[r][c] !== nextGrid[r][c]) {
+                    setCellState(r, c, nextGrid[r][c] === 1);
+                }
             }
         }
+        grid = nextGrid;
+    } else if (isRunning) {
+        pauseSimulation();
     }
-    grid = nextGrid;
+}
+
+function resetStepCount() {
+    stepCount = 0;
+    stepCountDisplay.textContent = '0';
 }
 
 function startSimulation() {
@@ -150,7 +168,7 @@ function startSimulation() {
     startBtn.disabled = true;
     pauseBtn.disabled = false;
     nextBtn.disabled = true;
-    simulationInterval = setInterval(updateStep, 1000);
+    simulationInterval = setInterval(updateStep, currentSpeed);
 }
 
 function pauseSimulation() {
@@ -166,6 +184,7 @@ function pauseSimulation() {
 
 function clearGrid() {
     pauseSimulation();
+    resetStepCount();
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
             if (grid[r][c] === 1) {
@@ -174,6 +193,18 @@ function clearGrid() {
         }
     }
 }
+
+// Speed slider handling
+speedSlider.addEventListener('input', (e) => {
+    currentSpeed = parseInt(e.target.value);
+    speedValDisplay.textContent = (currentSpeed / 1000).toFixed(1) + 's';
+    
+    if (isRunning) {
+        // Restart interval with new speed
+        clearInterval(simulationInterval);
+        simulationInterval = setInterval(updateStep, currentSpeed);
+    }
+});
 
 // Global mouse tracking
 window.addEventListener('mouseup', () => {

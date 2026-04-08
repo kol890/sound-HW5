@@ -25,6 +25,17 @@
 
     <main>
         <div id="grid-container"></div>
+        <div class="settings-overlay">
+            <div class="setting-item">
+                <span class="label">Step:</span>
+                <span id="step-count">0</span>
+            </div>
+            <div class="setting-item">
+                <span class="label">Speed:</span>
+                <input type="range" id="speed-slider" min="100" max="2000" step="100" value="1000">
+                <span id="speed-val">1.0s</span>
+            </div>
+        </div>
     </main>
 
     <script src="main.js"></script>
