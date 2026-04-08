@@ -34,12 +34,73 @@ header {
 .header-content {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    background-color: #21262d;
+    color: var(--text-color);
+    border: 1px solid var(--cell-border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+button:hover:not(:disabled) {
+    background-color: #30363d;
+    border-color: #8b949e;
+}
+
+button:active:not(:disabled) {
+    background-color: #282e33;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#start-btn {
+    border-color: rgba(63, 185, 80, 0.4);
+}
+
+#start-btn:hover:not(:disabled) {
+    border-color: var(--cell-alive-1);
+}
+
+#restart-btn {
+    border-color: rgba(248, 81, 73, 0.4);
+}
+
+#restart-btn:hover:not(:disabled) {
+    border-color: var(--cell-alive-3);
+}
+
+.instruction {
+    font-size: 13px;
+    color: #8b949e;
+    font-style: italic;
+    white-space: nowrap;
 }
 
 h1 {
     font-size: 24px;
     margin: 0;
+    white-space: nowrap;
     background: linear-gradient(90deg, #3fb950, #d29922, #f85149, #bc8cff, #1f6feb);
     background-size: 200% 200%;
     -webkit-background-clip: text;
@@ -53,6 +114,7 @@ h1 {
     text-decoration: none;
     font-size: 14px;
     transition: filter 0.2s;
+    white-space: nowrap;
 }
 
 .blog-link:hover {
