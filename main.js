@@ -12,15 +12,19 @@ const stepCountDisplay = document.getElementById('step-count');
 const CELL_SIZE = 16;
 let rows, cols;
 let isMouseDown = false;
-let currentMode = true; // true = painting alive, false = painting dead
+let currentMode = true;
 let isRunning = false;
-let simulationInterval = null;
-let currentSpeed = 1000;
 let stepCount = 0;
 
 // Internal state
 let grid = [];
-let cellElements = []; // DOM Cache
+let cellElements = [];
+
+// --- TWO CLOCKS SCHEDULER ---
+let currentSpeed = 1000; // ms per step
+let nextStepTime = 0;    // When the next audio step should occur (in audioContext time)
+const LOOK_AHEAD = 0.1;  // How far to look ahead (seconds)
+let requestRef = null;
 
 // Audio Context & Routing
 let audioCtx = null;
@@ -35,7 +39,6 @@ const colors = [
     'var(--cell-alive-5)'
 ];
 
-// Minor Pentatonic Frequencies
 const MINOR_PENTATONIC = [
     55.00,  65.41,  73.42,  82.41,  98.00,  
     110.00, 130.81, 146.83, 164.81, 196.00, 
@@ -44,13 +47,9 @@ const MINOR_PENTATONIC = [
     880.00, 1046.50, 1174.66, 1318.51, 1567.98 
 ];
 
-/**
- * Initializes Audio Context with a DynamicsCompressor to prevent clipping
- */
 function initAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
         compressor = audioCtx.createDynamicsCompressor();
         compressor.threshold.setValueAtTime(-18, audioCtx.currentTime);
         compressor.knee.setValueAtTime(30, audioCtx.currentTime);
@@ -66,25 +65,15 @@ function initAudio() {
     }
 }
 
-/**
- * Plays a single note with an ADSR-like envelope and volume normalization.
- */
 function playNote(frequency, startTime, duration, noteCount = 1) {
     initAudio();
-    
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(frequency, startTime);
 
-    // --- Frequency Balancing ---
-    // Lower frequencies have much more energy and trigger the compressor too hard.
-    // We scale the gain based on frequency (higher freq = higher gain) to balance the mix.
     const freqFactor = Math.pow(frequency / 440, 0.5); 
     const baseVolume = 0.2 * freqFactor;
-    
-    // Scale volume down as more notes play to prevent mud/distortion
     const scaledVolume = baseVolume / Math.max(1, Math.pow(noteCount, 0.5));
 
     const attackTime = 0.03;
@@ -100,51 +89,47 @@ function playNote(frequency, startTime, duration, noteCount = 1) {
 
     osc.connect(gainNode);
     gainNode.connect(compressor);
-
     osc.start(startTime);
     osc.stop(startTime + duration + releaseTime);
 }
 
-/**
- * Maps a grid row to a frequency in the Minor Pentatonic scale.
- */
 function getFrequencyForRow(r) {
     const invertedRow = (rows - 1) - r;
     const scaleIndex = invertedRow % MINOR_PENTATONIC.length;
     return MINOR_PENTATONIC[scaleIndex];
 }
 
-/**
- * Creates the grid of cells based on the window size.
- */
+function scheduler() {
+    if (!isRunning) return;
+
+    while (nextStepTime < audioCtx.currentTime + LOOK_AHEAD) {
+        updateStep(nextStepTime);
+        nextStepTime += currentSpeed / 1000;
+    }
+    
+    requestRef = requestAnimationFrame(scheduler);
+}
+
 function createGrid() {
     pauseSimulation();
     resetStepCount();
     gridContainer.innerHTML = '';
-
     const width = gridContainer.clientWidth;
     const height = gridContainer.clientHeight;
-
     cols = Math.floor(width / CELL_SIZE);
     rows = Math.floor(height / CELL_SIZE);
-
     gridContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     gridContainer.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
 
-    // Initialize internal state and DOM cache
     grid = Array(rows).fill().map(() => Array(cols).fill(0));
     cellElements = Array(rows).fill().map(() => Array(cols).fill(null));
 
     const fragment = document.createDocumentFragment();
-
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
             const cell = document.createElement('div');
             cell.classList.add('cell');
-            
-            // --- DOM Caching ---
             cellElements[r][c] = cell;
-            
             cell.addEventListener('mousedown', (e) => {
                 e.preventDefault();
                 isMouseDown = true;
@@ -154,7 +139,6 @@ function createGrid() {
                     playNote(getFrequencyForRow(r), audioCtx?.currentTime || 0, 0.2, 1);
                 }
             });
-
             cell.addEventListener('mouseover', () => {
                 if (isMouseDown) {
                     const wasDead = grid[r][c] === 0;
@@ -164,29 +148,20 @@ function createGrid() {
                     }
                 }
             });
-
             fragment.appendChild(cell);
         }
     }
-
     gridContainer.appendChild(fragment);
 }
 
-/**
- * Sets a specific cell's state and updates the UI using cached elements.
- */
 function setCellState(r, c, alive) {
     grid[r][c] = alive ? 1 : 0;
-    
-    // Use cached element instead of document.querySelector
     const cell = cellElements[r][c];
     if (!cell) return;
-
     if (alive) {
         if (!cell.classList.contains('alive')) {
             cell.classList.add('alive');
-            const randomColor = colors[Math.floor(Math.random() * colors.length)];
-            cell.style.backgroundColor = randomColor;
+            cell.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
         }
     } else {
         cell.classList.remove('alive');
@@ -194,9 +169,6 @@ function setCellState(r, c, alive) {
     }
 }
 
-/**
- * Counts live neighbors for a cell with wrapping (toroidal) grid.
- */
 function countNeighbors(r, c) {
     let count = 0;
     for (let i = -1; i <= 1; i++) {
@@ -211,32 +183,27 @@ function countNeighbors(r, c) {
 }
 
 /**
- * Computes the next generation based on Game of Life rules.
+ * Computes next generation and schedules audio/visuals.
  */
-function updateStep() {
+function updateStep(time) {
     const nextGrid = grid.map(arr => [...arr]);
-    let hasChanged = false;
     let anyAlive = false;
-    
     const activeRows = new Set();
 
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
             const neighbors = countNeighbors(r, c);
             const isAlive = grid[r][c] === 1;
-
             if (isAlive) {
-                if (neighbors < 2 || neighbors > 3) {
-                    nextGrid[r][c] = 0;
-                    hasChanged = true;
-                } else {
+                if (neighbors === 2 || neighbors === 3) {
                     anyAlive = true;
                     activeRows.add(r);
+                } else {
+                    nextGrid[r][c] = 0;
                 }
             } else {
                 if (neighbors === 3) {
                     nextGrid[r][c] = 1;
-                    hasChanged = true;
                     anyAlive = true;
                     activeRows.add(r);
                 }
@@ -244,26 +211,42 @@ function updateStep() {
         }
     }
 
-    if (hasChanged || anyAlive) {
-        stepCount++;
-        stepCountDisplay.textContent = stepCount;
-        
-        const noteDuration = (currentSpeed / 1000) * 0.8;
-        const noteCount = activeRows.size;
-        activeRows.forEach(r => {
-            playNote(getFrequencyForRow(r), audioCtx.currentTime, noteDuration, noteCount);
-        });
+    // Schedule audio
+    const noteDuration = (currentSpeed / 1000) * 0.8;
+    activeRows.forEach(r => playNote(getFrequencyForRow(r), time, noteDuration, activeRows.size));
 
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                if (grid[r][c] !== nextGrid[r][c]) {
-                    setCellState(r, c, nextGrid[r][c] === 1);
-                }
+    // Schedule visual update
+    const gridToRender = nextGrid.map(arr => [...arr]);
+    const currentStep = ++stepCount;
+    const delay = (time - audioCtx.currentTime) * 1000;
+    
+    setTimeout(() => {
+        requestAnimationFrame(() => {
+            renderGridState(gridToRender, currentStep);
+        });
+    }, Math.max(0, delay));
+
+    grid = nextGrid;
+    if (!anyAlive && isRunning) pauseSimulation();
+}
+
+/**
+ * Updates DOM based on a captured grid state.
+ */
+function renderGridState(state, count) {
+    stepCountDisplay.textContent = count;
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const isAlive = state[r][c] === 1;
+            const cell = cellElements[r][c];
+            if (isAlive && !cell.classList.contains('alive')) {
+                cell.classList.add('alive');
+                cell.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            } else if (!isAlive && cell.classList.contains('alive')) {
+                cell.classList.remove('alive');
+                cell.style.backgroundColor = '';
             }
         }
-        grid = nextGrid;
-    } else if (isRunning) {
-        pauseSimulation();
     }
 }
 
@@ -275,13 +258,13 @@ function resetStepCount() {
 function startSimulation() {
     initAudio();
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    
     if (isRunning) return;
     isRunning = true;
     startBtn.disabled = true;
     pauseBtn.disabled = false;
     nextBtn.disabled = true;
-    simulationInterval = setInterval(updateStep, currentSpeed);
+    nextStepTime = audioCtx.currentTime;
+    scheduler();
 }
 
 function pauseSimulation() {
@@ -289,10 +272,7 @@ function pauseSimulation() {
     startBtn.disabled = false;
     pauseBtn.disabled = true;
     nextBtn.disabled = false;
-    if (simulationInterval) {
-        clearInterval(simulationInterval);
-        simulationInterval = null;
-    }
+    if (requestRef) cancelAnimationFrame(requestRef);
 }
 
 function clearGrid() {
@@ -300,42 +280,29 @@ function clearGrid() {
     resetStepCount();
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-            if (grid[r][c] === 1) {
-                setCellState(r, c, false);
-            }
+            setCellState(r, c, false);
         }
     }
 }
 
-// Speed slider handling
 speedSlider.addEventListener('input', (e) => {
     currentSpeed = parseInt(e.target.value);
     speedValDisplay.textContent = (currentSpeed / 1000).toFixed(1) + 's';
-    
-    if (isRunning) {
-        clearInterval(simulationInterval);
-        simulationInterval = setInterval(updateStep, currentSpeed);
-    }
 });
 
-// Global mouse tracking
-window.addEventListener('mouseup', () => {
-    isMouseDown = false;
-});
-
-// Initialization
+window.addEventListener('mouseup', () => { isMouseDown = false; });
 createGrid();
 window.addEventListener('resize', () => {
     clearTimeout(window.resizeTimer);
     window.resizeTimer = setTimeout(createGrid, 250);
 });
 
-// Button events
 startBtn.addEventListener('click', startSimulation);
 pauseBtn.addEventListener('click', pauseSimulation);
 nextBtn.addEventListener('click', () => {
     if (!isRunning) {
-        updateStep();
+        initAudio();
+        updateStep(audioCtx.currentTime);
     }
 });
 restartBtn.addEventListener('click', clearGrid);
