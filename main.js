@@ -64,10 +64,13 @@ function initAudio() {
     }
 }
 
-function playNote(frequency, startTime, duration, noteCount = 1) {
+function playNote(frequency, startTime, duration, noteCount = 1, pan = 0) {
     initAudio();
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
+    const panner = audioCtx.createStereoPanner();
+    
+    panner.pan.setValueAtTime(pan, startTime);
     osc.type = 'triangle';
 
     // Add slight variation for warmth (±0.5% jitter)
@@ -86,8 +89,11 @@ function playNote(frequency, startTime, duration, noteCount = 1) {
     gainNode.gain.exponentialRampToValueAtTime(sustainLevel, startTime + attackTime + decayTime);
     gainNode.gain.setValueAtTime(sustainLevel, startTime + duration);
     gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + releaseTime);
+    
     osc.connect(gainNode);
-    gainNode.connect(compressor);
+    gainNode.connect(panner);
+    panner.connect(compressor);
+    
     osc.start(startTime);
     osc.stop(startTime + duration + releaseTime);
 }
@@ -135,13 +141,19 @@ function createGrid() {
                 isMouseDown = true;
                 currentMode = grid[idx] === 0;
                 setCellState(r, c, currentMode);
-                if (currentMode) playNote(getFrequencyForRow(r), audioCtx?.currentTime || 0, 0.2, 1);
+                if (currentMode) {
+                    const pan = (c / Math.max(1, cols - 1)) * 2 - 1;
+                    playNote(getFrequencyForRow(r), audioCtx?.currentTime || 0, 0.2, 1, pan);
+                }
             });
             cell.addEventListener('mouseover', () => {
                 if (isMouseDown) {
                     const wasDead = grid[idx] === 0;
                     setCellState(r, c, currentMode);
-                    if (wasDead && currentMode) playNote(getFrequencyForRow(r), audioCtx?.currentTime || 0, 0.2, 1);
+                    if (wasDead && currentMode) {
+                        const pan = (c / Math.max(1, cols - 1)) * 2 - 1;
+                        playNote(getFrequencyForRow(r), audioCtx?.currentTime || 0, 0.2, 1, pan);
+                    }
                 }
             });
             fragment.appendChild(cell);
@@ -182,7 +194,7 @@ function countNeighbors(r, c) {
 
 function updateStep(time) {
     let anyAlive = false;
-    const activeRows = new Set();
+    const activeCells = []; // Track all alive cells for simulation audio
     const changes = []; // Only track what changed for the visual update
 
     for (let r = 0; r < rows; r++) {
@@ -197,12 +209,12 @@ function updateStep(time) {
                 if (neighbors === 2 || neighbors === 3) {
                     nextState = 1;
                     anyAlive = true;
-                    activeRows.add(r);
+                    activeCells.push({r, c});
                 }
             } else if (neighbors === 3) {
                 nextState = 1;
                 anyAlive = true;
-                activeRows.add(r);
+                activeCells.push({r, c});
             }
 
             nextGrid[idx] = nextState;
@@ -219,7 +231,10 @@ function updateStep(time) {
 
     if (anyAlive || changes.length > 0) {
         const noteDuration = (currentSpeed / 1000) * 0.8;
-        activeRows.forEach(r => playNote(getFrequencyForRow(r), time, noteDuration, activeRows.size));
+        activeCells.forEach(cell => {
+            const pan = (cell.c / Math.max(1, cols - 1)) * 2 - 1;
+            playNote(getFrequencyForRow(cell.r), time, noteDuration, activeCells.length, pan);
+        });
 
         const currentStep = ++stepCount;
         const delay = (time - audioCtx.currentTime) * 1000;
