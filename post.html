@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How it Works | Cellular Automata Music</title>
+    <link rel="stylesheet" href="main.css">
+    <style>
+        .blog-container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            line-height: 1.6;
+            overflow-y: auto;
+            height: calc(100vh - 100px);
+        }
+
+        .blog-header {
+            margin-bottom: 40px;
+            border-bottom: 1px solid var(--cell-border);
+            padding-bottom: 20px;
+        }
+
+        .blog-header h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #3fb950, #d29922, #f85149, #bc8cff, #1f6feb);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .blog-content h2 {
+            color: var(--link-color);
+            margin-top: 30px;
+            font-size: 24px;
+        }
+
+        .blog-content p {
+            margin-bottom: 20px;
+            font-size: 18px;
+            color: #8b949e;
+        }
+
+        .blog-content code {
+            background-color: #161b22;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: var(--cell-alive-2);
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: var(--link-color);
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Customize scrollbar for reading */
+        .blog-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .blog-container::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+        .blog-container::-webkit-scrollbar-thumb {
+            background: var(--cell-border);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="header-left">
+                <h1>Cellular Automata</h1>
+            </div>
+            <a href="index.html" class="blog-link">Back to Grid</a>
+        </div>
+    </header>
+
+    <main style="display: block;">
+        <div class="blog-container">
+            <a href="index.html" class="back-link">← Back to Simulation</a>
+            
+            <header class="blog-header">
+                <h1>Automated Composition: Music from Cells</h1>
+                <p class="instruction">An exploration of cellular automata and generative sound.</p>
+            </header>
+
+            <article class="blog-content">
+                <h2>Overview</h2>
+                <p>For my homework, I chose to implement cellular automata as the concept is most visually
+                    and musically interesting to me. I chose to remain loyal to John Conway’s "Game of Life"
+                    rules for automata generation and explore how the audio could match how
+                    <strong>alive</strong> the visuals are. While the lecture covered the mathematical
+                    foundation of this system such as cells living, dying, or reproducing based on their
+                    neighbors,  the challenge was translating that spatial logic into a "breathing"
+                    musical environment using <strong>Web Audio</strong>.</p>
+
+                <p>You can experiment with the system yourself in the demo, where drawing a pattern initiates
+                    a self-evolving polyphonic performance.</p>
+
+                <h2>The Mapping Strategy</h2>
+                <p>
+                    There are many possibilities when it comes to mapping the cellular automata’s output to notes. For this implementation, I chose to map the Y-axis and X-axis to pitch and spatial parameters, respectively.
+                </p>
+
+                <ul>
+                    <li><strong>The Y-Axis (Pitch):</strong> I mapped the vertical axis to a <strong>Minor Pentatonic scale</strong>. Lower rows trigger deep, grounding tones, while the higher rows reach into higher frequencies. This high-to-low scale repeats itself so that cells in the middle also produce a high frequency. I found this more musically motivating since the high notes are what really stick out when so many notes are playing at once, and I found myself anticipating when a glider would hit a high frequency.</li>
+                    <li><strong>The X-Axis (Spatialization):</strong> To make the patterns feel like they were moving through a physical space, I implemented <strong>Stereo Panning</strong> via the <code>StereoPannerNode</code>. As cells migrate across the grid, the sound travels between the left and right channels, reinforcing the visual movement musically.</li>
+                </ul>
+
+
+                <h2>Bringing the Audio to Life + Insights</h2>
+                <p>While I enjoyed watching my gliders move across the grid and hearing that movement as well, the audio still had too much of a “sterile” sound. My primary goal then became to move away from the "robotic" feel to a sound that reflected the life of the cells.</p>
+                <h3>1. Overcoming Robotic Audio with a Jitter</h3>
+                <p>I realized that the digital oscillators can often sound sterile and "perfect." To give the system an organic, acoustic-like quality, I added a <strong>&plusmn;0.5% frequency jitter</strong> to every note. This subtle detuning prevents the frequencies from being perfectly aligned, creating more of a chorus effect that feels more like a breathing organism than a computer program. I added a "jitter" toggle so you can hear the difference.</p>
+
+                <h3>2. Adaptive Tempo: Time is Not Constant</h3>
+                <p>One of my key insights was that the "tempo" of a living system shouldn't be static. I implemented an <strong>Adaptive Speed mode</strong> where the speed of the simulation is mapped directly to cell density. When the population is sparse, the system "breathes" slowly and calmly. As the population rises, the tempo accelerates, mirroring the chaos of the cell growth.</p>
+                <h3>3. Solving the Clipping Problem</h3> <p>In cellular automation like the Game of Life, you can easily end up with hundreds of cells "alive" at once. In my early versions, this caused massive audio clipping. To solve this, I implemented a <code>DynamicsCompressorNode</code> and <strong>Voice Limit</strong>. At first I was hesitant to cap voices, but realized that the human ear wouldn't be able to single out so many frequencies playing at once anyways.</p>
+
+                <h2>Conclusion</h2>
+                <p>In the end, I was able to create a soundscape where the audio feels less “robotic” and instead reflects the state of the cells during the "Game of Life."  The user plants the seeds and watches (and listens!) as their cells come alive. Try it for yourself!</p>
+
+
+            </article>
+        </div>
+    </main>
+</body>
+</html>

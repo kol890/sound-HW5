@@ -250,24 +250,12 @@ input:checked + .slider:before {
   border-radius: 50%;
 }
 
-#grid-container {
-    display: grid;
-    gap: 1px;
-    background-color: var(--cell-border);
-    border: 1px solid var(--cell-border);
+#grid-canvas {
     width: 100%;
     height: 100%;
-}
-
-.cell {
     background-color: var(--cell-bg);
-    transition: background-color 0.1s ease;
-}
-
-.cell.alive {
-    /* JavaScript will assign specific colors */
-    background-color: var(--cell-alive-1);
-    box-shadow: inset 0 0 5px rgba(255,255,255,0.2);
+    cursor: crosshair;
+    image-rendering: pixelated; /* Sharp edges */
 }
 
 @keyframes rainbow-slide {

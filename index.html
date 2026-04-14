@@ -19,12 +19,12 @@
                 </div>
                 <span class="instruction">Draw a pattern to get started!</span>
             </div>
-            <a href="#" class="blog-link">How it works (Blog Post)</a>
+            <a href="post.html" class="blog-link">Blog Post</a>
         </div>
     </header>
 
     <main>
-        <div id="grid-container"></div>
+        <canvas id="grid-canvas"></canvas>
         <div class="settings-overlay">
             <div class="setting-item">
                 <span class="label">Step:</span>
@@ -36,13 +36,20 @@
                 <span id="speed-val">1.0s</span>
             </div>
             <div class="setting-item">
-                <span class="label">Adaptive speed:</span>
+                <span class="label">Adaptive:</span>
                 <label class="switch">
                     <input type="checkbox" id="adaptive-toggle">
                     <span class="slider round"></span>
                 </label>
             </div>
-        </div>
+            <div class="setting-item">
+                <span class="label">Jitter:</span>
+                <label class="switch">
+                    <input type="checkbox" id="jitter-toggle" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            </div>
     </main>
 
     <script src="main.js"></script>
