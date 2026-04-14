@@ -7,6 +7,7 @@ const testSoundBtn = document.getElementById('test-sound-btn');
 const speedSlider = document.getElementById('speed-slider');
 const speedValDisplay = document.getElementById('speed-val');
 const stepCountDisplay = document.getElementById('step-count');
+const adaptiveToggle = document.getElementById('adaptive-toggle');
 
 // Settings for the grid
 const CELL_SIZE = 16;
@@ -15,6 +16,7 @@ let isMouseDown = false;
 let currentMode = true;
 let isRunning = false;
 let stepCount = 0;
+let isAdaptiveTempo = false;
 
 // Internal state - Optimized to 1D Typed Arrays
 let grid = null;
@@ -224,6 +226,25 @@ function updateStep(time) {
         }
     }
 
+    // Adaptive Tempo: Adjust currentSpeed based on activity
+    if (isAdaptiveTempo) {
+        const totalCells = rows * cols;
+        const aliveCount = activeCells.length;
+        const minInterval = 2000;
+        const maxInterval = 200;
+        
+        // Linear mapping: more alive = faster
+        // We use a factor (0.05) to make it feel more reactive at typical CA densities
+        const occupancy = Math.min(aliveCount / (totalCells * 0.05), 1.0);
+        currentSpeed = minInterval - occupancy * (minInterval - maxInterval);
+        
+        // Update UI
+        setTimeout(() => {
+            speedSlider.value = currentSpeed;
+            speedValDisplay.textContent = (currentSpeed / 1000).toFixed(1) + 's';
+        }, 0);
+    }
+
     // Buffer Swap: grid becomes nextGrid without any cloning
     const temp = grid;
     grid = nextGrid;
@@ -310,6 +331,11 @@ createGrid();
 window.addEventListener('resize', () => {
     clearTimeout(window.resizeTimer);
     window.resizeTimer = setTimeout(createGrid, 250);
+});
+
+adaptiveToggle.addEventListener('change', (e) => {
+    isAdaptiveTempo = e.target.checked;
+    speedSlider.disabled = isAdaptiveTempo;
 });
 
 startBtn.addEventListener('click', startSimulation);
